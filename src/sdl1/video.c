@@ -65,6 +65,7 @@ SDL_Surface *gWindowSurface = NULL;
 ScalingMode gScalingMode = ScalingModeAspectFit;
 int fullScreenWidth, fullScreenHeight;
 int lastWindowedWidth, lastWindowedHeight;
+unsigned int *scaleCacheX = NULL, *scaleCacheY = NULL;
 
 int windowResizingEventFilter(const SDL_Event* event);
 void updateWindowSize(int w, int h, Uint32 flags);
@@ -108,10 +109,71 @@ void initializeVideo(uint8_t fastMode)
     updateWindowViewport();
 }
 
+void updateScaleCache(const unsigned int srcW, const unsigned int srcH,
+                      const unsigned int dstW, const unsigned int dstH)
+{
+    static unsigned int oldSrcW = 0, oldSrcH = 0, oldDstW = 0, oldDstH = 0;
+
+    if (srcW == oldSrcW && srcH == oldSrcH && dstW == oldDstW && dstH == oldDstH)
+        return;
+
+    scaleCacheX = realloc(scaleCacheX, dstW * sizeof(unsigned int));
+    for (unsigned int x = 0; x < dstW; x++) {
+        scaleCacheX[x] = (x * srcW) / dstW;
+    }
+
+    scaleCacheY = realloc(scaleCacheY, dstH * sizeof(unsigned int));
+    for (unsigned int y = 0; y < dstH; y++) {
+        scaleCacheY[y] = (y * srcH) / dstH;
+    }
+
+    oldSrcW = srcW;
+    oldSrcH = srcH;
+    oldDstW = dstW;
+    oldDstH = dstH;
+}
+
+void blitScaled(const uint8_t *src, const unsigned int srcPitch,
+                uint8_t *dst, const unsigned int dstPitch,
+                const unsigned int dstW, const unsigned int dstH)
+{
+    const unsigned int dstDelta = (dstPitch - dstW);
+
+    for (unsigned int y = 0; y < dstH; y++) {
+        const uint8_t *srcP = src + srcPitch * scaleCacheY[y];
+
+        for (unsigned int x = 0; x < dstW; x++) {
+            unsigned int cachedX = scaleCacheX[x];
+            uint8_t pixel = srcP[cachedX];
+            *dst++ = pixel;
+        }
+
+        dst += dstDelta;
+    }
+}
+
+void sdlBlitScaled(SDL_Surface *src, const SDL_Rect *srcRect, SDL_Surface *dst, const SDL_Rect *dstRect)
+{
+        SDL_LockSurface(src);
+        SDL_LockSurface(dst);
+
+        const uint8_t *srcP = ((const uint8_t *)src->pixels) + srcRect->y * src->pitch + srcRect->x;
+        uint8_t *dstP = ((uint8_t *)dst->pixels) + (dst->pitch * dstRect->y) + dstRect->x;
+
+        updateScaleCache(srcRect->w, srcRect->h, dstRect->w, dstRect->h);
+        blitScaled(srcP, src->pitch, dstP, dst->pitch, dstRect->w, dstRect->h);
+
+        SDL_UnlockSurface(dst);
+        SDL_UnlockSurface(src);
+}
+
 void render()
 {
-    //SDL_BlitSurface(gScreenSurface, NULL, gWindowSurface, NULL); // TODO: use only this?
-    SDL_SoftStretch(gScreenSurface, &gScreenClipRect, gWindowSurface, &gWindowViewport);
+    if (gScreenClipRect.w == gWindowViewport.w && gScreenClipRect.h == gWindowViewport.h) {
+        SDL_BlitSurface(gScreenSurface, NULL, gWindowSurface, NULL);
+    } else {
+        sdlBlitScaled(gScreenSurface, &gScreenClipRect, gWindowSurface, &gWindowViewport);
+    }
 }
 
 void present()
@@ -136,6 +198,14 @@ void destroyVideo()
     if (gWindowSurface != NULL)
     {
         SDL_FreeSurface(gWindowSurface);
+    }
+    if (scaleCacheX != NULL)
+    {
+        free(scaleCacheX);
+    }
+    if (scaleCacheY != NULL)
+    {
+        free(scaleCacheY);
     }
 }
 
