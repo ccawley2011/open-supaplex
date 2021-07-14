@@ -299,13 +299,13 @@ uint8_t getFullscreenMode(void)
 void setGlobalPaletteColor(const uint8_t index, const Color color)
 {
     SDL_SetPalette(gScreenSurface, SDL_LOGPAL, (SDL_Color *)&color, index, 1);
-    SDL_SetPalette(gWindowSurface, SDL_PHYSPAL, (SDL_Color *)&color, index, 1);
+    SDL_SetPalette(gWindowSurface, SDL_LOGPAL|SDL_PHYSPAL, (SDL_Color *)&color, index, 1);
 }
 
 void setColorPalette(const ColorPalette palette)
 {
     SDL_SetPalette(gScreenSurface, SDL_LOGPAL, (SDL_Color *)palette, 0, kNumberOfColors);
-    SDL_SetPalette(gWindowSurface, SDL_PHYSPAL, (SDL_Color *)palette, 0, kNumberOfColors);
+    SDL_SetPalette(gWindowSurface, SDL_LOGPAL|SDL_PHYSPAL, (SDL_Color *)palette, 0, kNumberOfColors);
 }
 
 int windowResizingEventFilter(const SDL_Event* event)
@@ -323,7 +323,7 @@ void updateWindowSize(int w, int h, Uint32 flags)
     gWindowSurface =  SDL_SetVideoMode(w, h, 8, flags);
 
     SDL_Palette *palette = gScreenSurface->format->palette;
-    SDL_SetPalette(gWindowSurface, SDL_PHYSPAL, palette->colors, 0, palette->ncolors);
+    SDL_SetPalette(gWindowSurface, SDL_LOGPAL|SDL_PHYSPAL, palette->colors, 0, palette->ncolors);
 
     updateWindowViewport();
     render();
